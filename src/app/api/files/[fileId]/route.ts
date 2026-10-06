@@ -21,11 +21,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ fileId: st
     (user.teacherProfile && file.submission.student.studentProfile?.group.teacherId === user.teacherProfile.id);
   if (!isOwner && !isTeacher) return new NextResponse("Forbidden", { status: 403 });
 
-  const data = await storage.get(file.storageKey);
-  if (!data) return new NextResponse("Not found", { status: 404 });
+  const stored = await storage.get(file.storageKey);
+  if (!stored) return new NextResponse("Not found", { status: 404 });
 
   const inline = file.mimeType.startsWith("image/") || file.mimeType === "application/pdf";
-  return new NextResponse(new Uint8Array(data), {
+  return new NextResponse(stored.body as BodyInit, {
     headers: {
       "Content-Type": file.mimeType === "image/svg+xml" ? "application/octet-stream" : file.mimeType,
       "Content-Disposition": `${inline && file.mimeType !== "image/svg+xml" ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,

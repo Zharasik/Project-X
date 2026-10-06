@@ -19,7 +19,15 @@ export const localStorageDriver: StorageDriver = {
   },
   async get(key) {
     try {
-      return await fs.readFile(resolveKey(key));
+      return { body: new Uint8Array(await fs.readFile(resolveKey(key))) };
+    } catch {
+      return null;
+    }
+  },
+  async stat(key) {
+    try {
+      const st = await fs.stat(resolveKey(key));
+      return { size: st.size, contentType: "application/octet-stream" };
     } catch {
       return null;
     }

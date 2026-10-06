@@ -14,6 +14,8 @@ import { Markdown } from "@/components/markdown";
 import { FavoriteButton } from "@/components/student/favorite-button";
 import { LessonCrumbs } from "@/components/student/lesson-header";
 import { STEP_LABEL } from "@/components/student/steps";
+import { storageMode } from "@/lib/storage";
+import { BLOB_ACCESS } from "@/lib/storage/blob";
 import { SubmitPracticeForm } from "./submit-form";
 import { DeleteFileButton } from "./delete-file";
 
@@ -164,6 +166,7 @@ export default async function PracticePage({ params }: Props) {
               allowUpload={practice.allowUpload}
               resubmit={!!submission}
               defaults={{ comment: submission?.comment ?? "", link: submission?.link ?? "" }}
+              direct={storageMode === "blob" ? { userId: user.id, access: BLOB_ACCESS } : null}
             />
           </Panel>
         )}

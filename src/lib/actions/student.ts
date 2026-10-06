@@ -9,7 +9,8 @@ import { db } from "@/lib/db";
 import { requireStudent } from "@/lib/auth";
 import { getAccessibleLesson, getLessonState, getNeighbours, markLessonFinished, syncLessonProgress } from "@/lib/progress";
 import { gradeAnswers, type QuizResult } from "@/lib/quiz";
-import { ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, extensionOf, storage } from "@/lib/storage";
+import { extensionOf, storage, storageMode } from "@/lib/storage";
+import { submissionPrefix, uploadError } from "@/lib/uploads";
 
 async function lessonForStudent(lessonId: string) {
   const user = await requireStudent();
@@ -64,13 +65,39 @@ export async function submitPractice(_: SubmitState, formData: FormData): Promis
   const practice = lesson.practice;
   if (!practice) return { error: "У темы нет практического задания" };
 
+  // Local storage: files arrive in the form. Blob storage: the browser already
+  // uploaded them under the student's prefix and sends their keys.
   const files = practice.allowUpload
     ? formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0)
     : [];
   for (const f of files) {
-    if (f.size > MAX_UPLOAD_BYTES) return { error: `Файл «${f.name}» больше 15 МБ` };
-    if (!ALLOWED_EXTENSIONS.includes(extensionOf(f.name))) {
-      return { error: `Формат «${f.name}» не поддерживается. Разрешены: ${ALLOWED_EXTENSIONS.join(", ")}` };
+    const err = uploadError(f);
+    if (err) return { error: err };
+  }
+
+  const uploaded: { key: string; name: string; size: number; contentType: string }[] = [];
+  if (practice.allowUpload && storageMode === "blob") {
+    let raw: unknown = [];
+    try {
+      raw = JSON.parse(String(formData.get("uploaded") ?? "[]"));
+    } catch {
+      return { error: "Не удалось прочитать загруженные файлы" };
+    }
+    const parsedUploads = z
+      .array(z.object({ key: z.string().max(500), name: z.string().max(200) }))
+      .max(20)
+      .safeParse(raw);
+    if (!parsedUploads.success) return { error: "Не удалось прочитать загруженные файлы" };
+    for (const u of parsedUploads.data) {
+      if (!u.key.startsWith(submissionPrefix(user.id)) || u.key.includes("..")) return { error: "Недопустимый файл" };
+      const st = await storage.stat(u.key);
+      if (!st) return { error: `Файл «${u.name}» не загрузился, попробуйте ещё раз` };
+      const err = uploadError({ name: u.name, size: st.size });
+      if (err) {
+        await storage.delete(u.key);
+        return { error: err };
+      }
+      uploaded.push({ key: u.key, name: u.name, size: st.size, contentType: st.contentType });
     }
   }
 
@@ -91,8 +118,16 @@ export async function submitPractice(_: SubmitState, formData: FormData): Promis
     },
   });
 
+  for (const u of uploaded) {
+    await db.submissionFile.upsert({
+      where: { storageKey: u.key },
+      create: { submissionId: submission.id, storageKey: u.key, fileName: u.name, mimeType: u.contentType, size: u.size },
+      update: {},
+    });
+  }
+
   for (const f of files) {
-    const key = `submissions/${submission.id}/${randomUUID()}.${extensionOf(f.name)}`;
+    const key = `${submissionPrefix(user.id)}${randomUUID()}.${extensionOf(f.name)}`;
     await storage.put(key, Buffer.from(await f.arrayBuffer()), f.type || "application/octet-stream");
     await db.submissionFile.create({
       data: {

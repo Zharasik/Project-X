@@ -1,9 +1,11 @@
 "use client";
 
 import { useActionState, useRef, useState } from "react";
+import { upload } from "@vercel/blob/client";
 import { Paperclip, Upload, X } from "lucide-react";
 import { submitPractice } from "@/lib/actions/student";
 import { formatBytes } from "@/lib/utils";
+import { submissionPrefix, uploadError } from "@/lib/uploads";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, Input, Textarea } from "@/components/ui/form";
 
@@ -12,13 +14,47 @@ export function SubmitPracticeForm({
   allowUpload,
   resubmit,
   defaults,
+  direct,
 }: {
   lessonId: string;
   allowUpload: boolean;
   resubmit: boolean;
   defaults: { comment: string; link: string };
+  /** Upload straight to Vercel Blob from the browser (production). */
+  direct: { userId: string; access: "private" | "public" } | null;
 }) {
-  const [state, action, pending] = useActionState(submitPractice, undefined);
+  const [uploading, setUploading] = useState(false);
+  const [state, action, pending] = useActionState(async (prev: Awaited<ReturnType<typeof submitPractice>>, fd: FormData) => {
+    const picked = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    for (const f of picked) {
+      const err = uploadError(f);
+      if (err) return { error: err };
+    }
+    if (direct && picked.length) {
+      setUploading(true);
+      try {
+        const done = await Promise.all(
+          picked.map(async (f) => {
+            const safe = f.name.replace(/[^\w.\-]+/g, "_").slice(-80);
+            const blob = await upload(`${submissionPrefix(direct.userId)}${safe}`, f, {
+              access: direct.access,
+              handleUploadUrl: "/api/upload",
+              clientPayload: lessonId,
+              multipart: f.size > 5 * 1024 * 1024,
+            });
+            return { key: blob.pathname, name: f.name };
+          }),
+        );
+        fd.delete("files");
+        fd.set("uploaded", JSON.stringify(done));
+      } catch (e) {
+        return { error: e instanceof Error ? `Не удалось загрузить файл: ${e.message}` : "Не удалось загрузить файл" };
+      } finally {
+        setUploading(false);
+      }
+    }
+    return submitPractice(prev, fd);
+  }, undefined);
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -98,7 +134,7 @@ export function SubmitPracticeForm({
       {state?.ok && <p className="rounded-md bg-success-soft px-3 py-2 text-sm text-success">Работа отправлена на проверку.</p>}
       <div className="flex justify-end">
         <Button variant="primary" size="lg" disabled={pending}>
-          {pending ? "Отправляем…" : resubmit ? "Отправить заново" : "Отметить как выполнено"}
+          {uploading ? "Загружаем файлы…" : pending ? "Отправляем…" : resubmit ? "Отправить заново" : "Отметить как выполнено"}
         </Button>
       </div>
     </form>
