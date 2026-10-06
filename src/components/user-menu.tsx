@@ -1,6 +1,6 @@
 import { logout } from "@/lib/actions/auth";
 
-export function UserMenu({ name, subtitle }: { name: string; subtitle?: string }) {
+export function UserMenu({ name, subtitle, up }: { name: string; subtitle?: string; up?: boolean }) {
   const initials = name
     .split(" ")
     .map((p) => p[0])
@@ -14,7 +14,7 @@ export function UserMenu({ name, subtitle }: { name: string; subtitle?: string }
           {initials}
         </span>
       </summary>
-      <div className="absolute right-0 z-50 mt-1 w-56 rounded-lg border border-border bg-surface p-1 shadow">
+      <div className={`absolute z-50 w-56 ${up ? "bottom-full left-0 mb-1" : "right-0 mt-1"} rounded-lg border border-border bg-surface p-1 shadow`}>
         <div className="px-2.5 py-2">
           <p className="truncate text-sm font-medium text-fg">{name}</p>
           {subtitle && <p className="truncate text-xs text-fg-3">{subtitle}</p>}

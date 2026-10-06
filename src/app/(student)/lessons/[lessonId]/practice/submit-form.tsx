@@ -3,7 +3,7 @@
 import { useActionState, useRef, useState } from "react";
 import { Paperclip, Upload, X } from "lucide-react";
 import { submitPractice } from "@/lib/actions/student";
-import { formatBytes } from "@/lib/practice";
+import { formatBytes } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Field, FormError, Input, Textarea } from "@/components/ui/form";
 

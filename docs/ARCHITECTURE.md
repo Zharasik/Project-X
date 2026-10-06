@@ -47,7 +47,7 @@ src/
       groups/…, students/[id]       — студенты и их прогресс
       submissions                   — проверка практических работ
       results                       — результаты тестов
-    api/files/[...key]              — отдача загруженных файлов (с проверкой доступа)
+    api/files/[fileId]              — отдача загруженных файлов (с проверкой доступа)
   components/
     ui/                             — собственные примитивы (Button, Badge, Progress…)
     student/, teacher/              — доменные компоненты
@@ -91,7 +91,8 @@ Favorite → (lesson | hotkey) с указанием вида: LESSON / LECTURE 
 | `QuizAttempt.quizId` nullable + `mode` | «Быстрый тест» из случайных вопросов хранится в той же таблице |
 | `Submission` уникальна на (practice, student) | одна живая сдача, пересдача обновляет её; статус SUBMITTED → ACCEPTED / NEEDS_REVISION |
 | `SubmissionFile` + `storageKey` | загрузка расширяема: сменить драйвер (local → S3) без миграции |
-| `LessonProgress` хранит только факты (`lectureReadAt`, `quizBestPercent`, `completedAt`) | статус вычисляется в `lib/progress.ts`; практика берётся из `Submission`, клавиши — из `HotkeyStat` — без дублирования |
+| `LessonProgress` хранит только факты (`lectureReadAt`, `quizBestPercent`, `completedAt`) | статус вычисляется в `lib/progress.ts`; практика берётся из `Submission`, клавиши — из `HotkeyStat` — без дублирования. `completedAt` ставит только «Завершить тему» после серверной проверки всех шагов и сбрасывается, если работу вернули на доработку |
+| `Hotkey` — общая библиотека | одно сочетание переиспользуется во многих темах и курсах; уникально по (программа, сочетание) |
 | `DailyPlan` (group, lesson, date) + `DailyPlanItem` (тайминг) + `teacherNotes` | студенту отдаются только дата/тема/номер; тайминг и заметки видит лишь преподаватель |
 | `published` на Course/Module/Lesson/Hotkey | черновики невидимы студентам |
 | `order` на Module/Lesson | явный порядок, меняется ↑/↓ |

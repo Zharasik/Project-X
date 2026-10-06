@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { requireStudent } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/dates";
-import { getAccessibleLesson, getLessonState, getNeighbours, touchLesson } from "@/lib/progress";
+import { getAccessibleLesson, getLessonState, touchLesson } from "@/lib/progress";
 import { toPublicQuestion } from "@/lib/quiz";
 import { pad2, plural } from "@/lib/utils";
 import { submitLessonQuiz } from "@/lib/actions/student";
@@ -23,7 +23,7 @@ export default async function LessonQuizPage({ params }: Props) {
   const quiz = lesson.quiz;
 
   await touchLesson(user.id, lesson.id);
-  const [questions, attempts, state, neighbours] = await Promise.all([
+  const [questions, attempts, state] = await Promise.all([
     db.question.findMany({
       where: { quizId: quiz.id },
       orderBy: { order: "asc" },
@@ -35,14 +35,13 @@ export default async function LessonQuizPage({ params }: Props) {
       take: 5,
     }),
     getLessonState(user.id, lesson.id),
-    getNeighbours(lesson.module.course.id, lesson.id),
   ]);
   if (questions.length === 0) notFound();
 
   const stepIndex = (state?.steps.findIndex((s) => s.key === "quiz") ?? 2) + 1;
   const after = state?.steps.find((s) => s.key !== "quiz" && s.state !== "done");
   const nextHref = after?.href ?? `/lessons/${lesson.id}`;
-  const nextLabel = after ? `Дальше: ${STEP_LABEL[after.key]}` : neighbours.next ? "К теме" : "К теме";
+  const nextLabel = after ? `Дальше: ${STEP_LABEL[after.key]}` : "К теме";
   const best = attempts.reduce((m, a) => Math.max(m, a.percent), 0);
   const submit = submitLessonQuiz.bind(null, lesson.id);
 

@@ -1,18 +1,21 @@
 import { cn } from "@/lib/utils";
 
 const control =
-  "w-full rounded-md border border-border bg-surface px-2.5 text-base text-fg placeholder:text-fg-3 transition-[border-color,box-shadow] duration-150 hover:border-border-strong focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15 disabled:opacity-60";
+  "rounded-md border border-border bg-surface px-2.5 text-base text-fg placeholder:text-fg-3 transition-[border-color,box-shadow] duration-150 hover:border-border-strong focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15 disabled:opacity-60";
+
+/** Full width unless the caller sets its own width. */
+const width = (className?: string) => (/(^|\s)(\w+:)?w-/.test(className ?? "") ? undefined : "w-full");
 
 export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(control, "h-9", className)} {...props} />;
+  return <input className={cn(control, width(className), "h-9", className)} {...props} />;
 }
 
 export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn(control, "min-h-20 py-2 leading-relaxed", className)} {...props} />;
+  return <textarea className={cn(control, width(className), "min-h-20 py-2 leading-relaxed", className)} {...props} />;
 }
 
 export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn(control, "h-9 pr-8", className)} {...props} />;
+  return <select className={cn(control, width(className), "h-9 pr-8", className)} {...props} />;
 }
 
 export function Field({

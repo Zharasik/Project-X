@@ -22,3 +22,9 @@ export function formatMinutes(min: number) {
 export function pad2(n: number) {
   return n.toString().padStart(2, "0");
 }
+
+export function formatBytes(n: number) {
+  if (n < 1024) return `${n} Б`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} КБ`;
+  return `${(n / 1024 / 1024).toFixed(1)} МБ`;
+}
