@@ -29,6 +29,8 @@ export interface LessonState {
   total: number;
   /** First unfinished step, or null when everything is done */
   next: StepInfo | null;
+  /** Every step is done; the lesson becomes "completed" once the student confirms it */
+  allStepsDone: boolean;
   completedAt: Date | null;
 }
 
@@ -98,9 +100,11 @@ export async function getLessonStates(userId: string, lessonIds: string[]): Prom
 
     const done = steps.filter((s) => s.state === "done").length;
     const total = steps.length;
-    const touched = !!p || steps.some((s) => s.state !== "todo");
+    // A shared hotkey learned elsewhere shouldn't mark an unopened lesson as started.
+    const touched = !!p || steps.some((s) => s.key !== "hotkeys" && s.state !== "todo");
+    const allStepsDone = total > 0 && done === total;
     const status: LessonStatus =
-      total > 0 && done === total ? "completed" : touched ? "in_progress" : "not_started";
+      allStepsDone && p?.completedAt ? "completed" : touched ? "in_progress" : "not_started";
 
     result.set(lesson.id, {
       lessonId: lesson.id,
@@ -109,6 +113,7 @@ export async function getLessonStates(userId: string, lessonIds: string[]): Prom
       done,
       total,
       next: steps.find((s) => s.state !== "done") ?? null,
+      allStepsDone,
       completedAt: p?.completedAt ?? null,
     });
   }
@@ -121,19 +126,27 @@ export async function getLessonState(userId: string, lessonId: string) {
 }
 
 /**
- * Keeps LessonProgress.completedAt in sync with the derived status.
- * Call after any action that changes a step's facts.
+ * Called after any action that changes a step's facts. Ensures the lesson has
+ * a progress row and clears `completedAt` if the lesson is no longer complete
+ * (e.g. practice returned for revision). `completedAt` itself is only set by
+ * the explicit "Завершить тему" action after the server re-checks every step.
  */
-export async function syncLessonCompletion(userId: string, lessonId: string) {
+export async function syncLessonProgress(userId: string, lessonId: string) {
   const state = await getLessonState(userId, lessonId);
   if (!state) return null;
-  const completed = state.status === "completed";
   await db.lessonProgress.upsert({
     where: { userId_lessonId: { userId, lessonId } },
-    create: { userId, lessonId, completedAt: completed ? new Date() : null },
-    update: completed ? (state.completedAt ? {} : { completedAt: new Date() }) : { completedAt: null },
+    create: { userId, lessonId },
+    update: state.allStepsDone ? {} : { completedAt: null },
   });
   return state;
+}
+
+export async function markLessonFinished(userId: string, lessonId: string) {
+  await db.lessonProgress.update({
+    where: { userId_lessonId: { userId, lessonId } },
+    data: { completedAt: new Date() },
+  });
 }
 
 /** Marks a lesson as opened so it shows up as "in progress". */
