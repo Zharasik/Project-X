@@ -1,0 +1,391 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Users & roles ───────────────────────────
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN // reserved for future use
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(STUDENT)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  studentProfile StudentProfile?
+  teacherProfile TeacherProfile?
+
+  lessonProgress LessonProgress[]
+  submissions    Submission[]     @relation("SubmissionStudent")
+  reviews        Submission[]     @relation("SubmissionReviewer")
+  quizAttempts   QuizAttempt[]
+  hotkeyStats    HotkeyStat[]
+  favorites      Favorite[]
+}
+
+model StudentProfile {
+  id      String @id @default(cuid())
+  userId  String @unique
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@index([groupId])
+}
+
+model TeacherProfile {
+  id     String  @id @default(cuid())
+  userId String  @unique
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title  String?
+
+  groups  Group[]
+  courses Course[]
+}
+
+// ─────────────────────────── Groups ───────────────────────────
+
+model Group {
+  id         String         @id @default(cuid())
+  name       String // e.g. "WEB 2-1"
+  inviteCode String         @unique
+  teacherId  String
+  teacher    TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  createdAt  DateTime       @default(now())
+
+  students StudentProfile[]
+  courses  GroupCourse[]
+  plans    DailyPlan[]
+
+  @@index([teacherId])
+}
+
+model GroupCourse {
+  groupId  String
+  group    Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, courseId])
+}
+
+// ─────────────────────────── Content ───────────────────────────
+
+enum Software {
+  PHOTOSHOP
+  ILLUSTRATOR
+  FIGMA
+  GENERAL
+}
+
+model Course {
+  id          String         @id @default(cuid())
+  title       String
+  description String         @default("")
+  published   Boolean        @default(false)
+  teacherId   String
+  teacher     TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  modules Module[]
+  groups  GroupCourse[]
+
+  @@index([teacherId])
+}
+
+model Module {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String   @default("")
+  software    Software @default(GENERAL)
+  order       Int
+  published   Boolean  @default(true)
+
+  lessons Lesson[]
+
+  @@index([courseId, order])
+}
+
+model Lesson {
+  id               String   @id @default(cuid())
+  moduleId         String
+  module           Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title            String
+  summary          String   @default("")
+  order            Int
+  estimatedMinutes Int      @default(45)
+  published        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  lecture   Lecture?
+  practice  Practice?
+  quiz      Quiz?
+  hotkeys   LessonHotkey[]
+  progress  LessonProgress[]
+  plans     DailyPlan[]
+  favorites Favorite[]
+
+  @@index([moduleId, order])
+}
+
+/// Lecture body is Markdown (GFM) with callouts `> [!TIP]` and video embeds.
+model Lecture {
+  id               String   @id @default(cuid())
+  lessonId         String   @unique
+  lesson           Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  body             String   @default("")
+  estimatedMinutes Int      @default(15)
+  updatedAt        DateTime @updatedAt
+}
+
+model Practice {
+  id               String   @id @default(cuid())
+  lessonId         String   @unique
+  lesson           Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title            String
+  goal             String   @default("")
+  estimatedMinutes Int      @default(40)
+  software         String[] // "Adobe Photoshop 2024", …
+  /// [{ title: string, body: string (markdown), imageUrl?: string }]
+  steps            Json     @default("[]")
+  requirements     String[]
+  criteria         String[]
+  allowUpload      Boolean  @default(true)
+  updatedAt        DateTime @updatedAt
+
+  submissions Submission[]
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  ACCEPTED
+  NEEDS_REVISION
+}
+
+model Submission {
+  id          String           @id @default(cuid())
+  practiceId  String
+  practice    Practice         @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User             @relation("SubmissionStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  status      SubmissionStatus @default(SUBMITTED)
+  comment     String           @default("")
+  link        String?
+  feedback    String           @default("")
+  reviewerId  String?
+  reviewer    User?            @relation("SubmissionReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  submittedAt DateTime         @default(now())
+  reviewedAt  DateTime?
+
+  files SubmissionFile[]
+
+  @@unique([practiceId, studentId])
+  @@index([status, submittedAt])
+}
+
+/// Storage-agnostic file record. `storageKey` is resolved by the active storage driver.
+model SubmissionFile {
+  id           String     @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  storageKey   String     @unique
+  fileName     String
+  mimeType     String
+  size         Int
+  createdAt    DateTime   @default(now())
+}
+
+model Quiz {
+  id           String   @id @default(cuid())
+  lessonId     String   @unique
+  lesson       Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title        String   @default("Тест")
+  passingScore Int      @default(70) // percent
+  updatedAt    DateTime @updatedAt
+
+  questions Question[]
+  attempts  QuizAttempt[]
+}
+
+enum QuestionType {
+  SINGLE
+  MULTIPLE
+  TRUE_FALSE
+}
+
+model Question {
+  id          String       @id @default(cuid())
+  quizId      String
+  quiz        Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  type        QuestionType @default(SINGLE)
+  text        String
+  explanation String       @default("")
+  order       Int
+
+  options QuestionOption[]
+
+  @@index([quizId, order])
+}
+
+model QuestionOption {
+  id         String   @id @default(cuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+  isCorrect  Boolean  @default(false)
+  order      Int
+}
+
+enum QuizMode {
+  LESSON
+  QUICK
+}
+
+model QuizAttempt {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quizId    String? // null for quick (random) quizzes
+  quiz      Quiz?    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  mode      QuizMode @default(LESSON)
+  correct   Int
+  total     Int
+  percent   Int
+  passed    Boolean
+  /// { [questionId]: optionId[] }
+  answers   Json
+  createdAt DateTime @default(now())
+
+  @@index([userId, quizId])
+  @@index([quizId, createdAt])
+}
+
+// ─────────────────────────── Hotkeys ───────────────────────────
+
+model Hotkey {
+  id        String   @id @default(cuid())
+  software  Software
+  action    String // "Отменить последнее действие"
+  /// Canonical combo: modifiers in order Ctrl, Alt, Shift + key. e.g. "Ctrl+Shift+Z", "V", "["
+  keys      String
+  macKeys   String?
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  lessons   LessonHotkey[]
+  stats     HotkeyStat[]
+  favorites Favorite[]
+
+  @@unique([software, keys])
+}
+
+model LessonHotkey {
+  lessonId String
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  hotkeyId String
+  hotkey   Hotkey @relation(fields: [hotkeyId], references: [id], onDelete: Cascade)
+  order    Int    @default(0)
+
+  @@id([lessonId, hotkeyId])
+}
+
+model HotkeyStat {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hotkeyId  String
+  hotkey    Hotkey   @relation(fields: [hotkeyId], references: [id], onDelete: Cascade)
+  correct   Int      @default(0)
+  attempts  Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, hotkeyId])
+}
+
+// ─────────────────────────── Student state ───────────────────────────
+
+enum FavoriteKind {
+  LESSON
+  LECTURE
+  PRACTICE
+  HOTKEY
+}
+
+model Favorite {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      FavoriteKind
+  lessonId  String?
+  lesson    Lesson?      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  hotkeyId  String?
+  hotkey    Hotkey?      @relation(fields: [hotkeyId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, kind, lessonId])
+  @@unique([userId, kind, hotkeyId])
+  @@index([userId, createdAt])
+}
+
+/// Stores facts only. Status is derived in src/lib/progress.ts
+/// (practice → Submission, hotkeys → HotkeyStat).
+model LessonProgress {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId        String
+  lesson          Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  startedAt       DateTime  @default(now())
+  lectureReadAt   DateTime?
+  quizBestPercent Int?
+  quizPassedAt    DateTime?
+  completedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, lessonId])
+  @@index([lessonId])
+}
+
+// ─────────────────────────── Schedule ───────────────────────────
+
+model DailyPlan {
+  id           String   @id @default(cuid())
+  groupId      String
+  group        Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  lessonId     String
+  lesson       Lesson   @relation(fields: [lessonId], references: [id], onDelete: Restrict)
+  /// Calendar date of the class (time part is ignored, stored as UTC midnight)
+  date         DateTime @db.Date
+  number       Int? // "Занятие №"
+  teacherNotes String   @default("")
+  createdAt    DateTime @default(now())
+
+  items DailyPlanItem[]
+
+  @@index([groupId, date])
+}
+
+model DailyPlanItem {
+  id     String    @id @default(cuid())
+  planId String
+  plan   DailyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  start  String // "09:00"
+  end    String // "09:15"
+  title  String
+  order  Int
+}
